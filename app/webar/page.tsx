@@ -315,35 +315,7 @@ export default function WebARPage() {
 
       console.log("[Camera test] MindARを起動します");
 
-
       await system.start();
-
-      const video = document.querySelector("video");
-
-      if (video) {
-        video.setAttribute("playsinline", "");
-        video.muted = true;
-
-        Object.assign(video.style, {
-          position: "fixed",
-          inset: "0",
-          width: "100vw",
-          height: "100vh",
-          objectFit: "cover",
-          zIndex: "99999",
-          background: "transparent",
-        });
-
-        await video.play();
-
-        console.log("[Video test]", {
-          readyState: video.readyState,
-          width: video.videoWidth,
-          height: video.videoHeight,
-          paused: video.paused,
-          connected: video.isConnected,
-        });
-      }
 
       console.log("[AR] start() が完了しました");
 
@@ -382,6 +354,17 @@ export default function WebARPage() {
   const stopAR = () => {
     try {
       arSystemRef.current?.stop();
+
+      document.querySelectorAll("video").forEach((video) => {
+        video.style.position = "";
+        video.style.inset = "";
+        video.style.width = "";
+        video.style.height = "";
+        video.style.objectFit = "";
+        video.style.zIndex = "";
+        video.style.background = "";
+      });
+
       setIsRunning(false);
       setStatus("AR停止中");
       setErrorMessage("");
