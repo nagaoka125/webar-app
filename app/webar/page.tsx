@@ -90,6 +90,7 @@ export default function WebARPage() {
         setStatus("ARライブラリを読み込んでいます...");
 
         // A-Frame を先に読み込む
+        await loadScript("/vendor/mindar-image.prod.js");
         await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image-aframe.prod.js");
 
@@ -197,11 +198,22 @@ export default function WebARPage() {
 
         if (cancelled) return;
 
+        console.log(
+          "Scene loaded:",
+          sceneElement.hasLoaded
+        );
+
+        console.log(
+          "Registered systems:",
+          Object.keys(sceneElement.systems)
+        );
+
         const system = sceneElement.systems["mindar-image-system"];
 
         if (!system) {
           throw new Error("MindAR システムが見つかりません。ライブラリの読み込みを確認してください。");
         }
+        arSystemRef.current = system;
 
         arSystemRef.current = system;
         setStatus("ARの準備完了。開始ボタンを押してください");
