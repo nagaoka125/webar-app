@@ -280,25 +280,50 @@ export default function WebARPage() {
   const startAR = async () => {
     setErrorMessage("");
 
+    const system = arSystemRef.current;
+
+    if (!system) {
+      setErrorMessage("MindARシステムが準備できていません。");
+      return;
+    }
+
+    setStatus("カメラを起動しています...");
+
     try {
-      if (!arSystemRef.current) {
-        throw new Error("ARの準備がまだできていません。少し待ってください。");
-      }
+      console.log("[AR] start() を実行します");
 
-      setStatus("カメラを起動しています...");
+      await system.start();
 
-      await arSystemRef.current.start();
+      console.log("[AR] start() が完了しました");
 
       setIsRunning(true);
-      setStatus("マーカーをカメラに映してください");
+      setStatus("カメラ起動完了。マーカーを映してください");
+
+      window.setTimeout(() => {
+        const videos = document.querySelectorAll("video");
+
+        console.log("[AR] video要素数:", videos.length);
+
+        videos.forEach((video, index) => {
+          console.log(`[AR] video ${index}`, {
+            readyState: video.readyState,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+            paused: video.paused,
+            srcObject: video.srcObject,
+          });
+        });
+      }, 1500);
     } catch (error) {
-      console.error("AR start error:", error);
+      console.error("[AR] カメラ起動失敗:", error);
 
       setIsRunning(false);
-      setStatus("ARを開始できませんでした");
+      setStatus("カメラを起動できませんでした");
 
       setErrorMessage(
-        error instanceof Error ? error.message : String(error)
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error)
       );
     }
   };
