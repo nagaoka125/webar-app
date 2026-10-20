@@ -213,9 +213,23 @@ export default function WebARPage() {
         if (!system) {
           throw new Error("MindAR システムが見つかりません。ライブラリの読み込みを確認してください。");
         }
-        arSystemRef.current = system;
 
         arSystemRef.current = system;
+        window.setTimeout(() => {
+          const videos = document.querySelectorAll("video");
+
+          console.log("video要素数:", videos.length);
+
+          videos.forEach((video, index) => {
+            console.log(`video ${index}`, {
+              readyState: video.readyState,
+              videoWidth: video.videoWidth,
+              videoHeight: video.videoHeight,
+              paused: video.paused,
+              srcObject: video.srcObject,
+            });
+          });
+        }, 2000);
         setStatus("ARの準備完了。開始ボタンを押してください");
       } catch (error) {
         console.error(error);
