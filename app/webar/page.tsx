@@ -129,8 +129,8 @@ export default function WebARPage() {
         setStatus("ARライブラリを読み込んでいます...");
 
         // A-Frameを先に読み込む
-        await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image.prod.js");
+        await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image-aframe.prod.js");
 
         if (cancelled || !containerRef.current) return;
