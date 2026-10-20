@@ -292,6 +292,30 @@ export default function WebARPage() {
     try {
       console.log("[AR] start() を実行します");
 
+      console.log("[Camera test] getUserMediaを確認します");
+
+      const testStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+        },
+      });
+
+      console.log(
+        "[Camera test] カメラ取得成功:",
+        testStream.getVideoTracks().map((track) => ({
+          label: track.label,
+          readyState: track.readyState,
+          settings: track.getSettings(),
+        }))
+      );
+
+      // テスト用ストリームを停止してからMindARを起動
+      testStream.getTracks().forEach((track) => track.stop());
+
+      console.log("[Camera test] MindARを起動します");
+
+
       await system.start();
 
       console.log("[AR] start() が完了しました");
