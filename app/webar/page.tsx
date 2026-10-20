@@ -318,6 +318,33 @@ export default function WebARPage() {
 
       await system.start();
 
+      const video = document.querySelector("video");
+
+      if (video) {
+        video.setAttribute("playsinline", "");
+        video.muted = true;
+
+        Object.assign(video.style, {
+          position: "fixed",
+          inset: "0",
+          width: "100vw",
+          height: "100vh",
+          objectFit: "cover",
+          zIndex: "99999",
+          background: "transparent",
+        });
+
+        await video.play();
+
+        console.log("[Video test]", {
+          readyState: video.readyState,
+          width: video.videoWidth,
+          height: video.videoHeight,
+          paused: video.paused,
+          connected: video.isConnected,
+        });
+      }
+
       console.log("[AR] start() が完了しました");
 
       setIsRunning(true);
