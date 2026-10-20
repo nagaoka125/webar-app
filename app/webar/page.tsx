@@ -163,9 +163,12 @@ export default function WebARPage() {
         };
 
         onError = (event: Event) => {
-          console.error("AR scene error:", event);
+          console.error("[AR] arError:", event);
+
           if (!cancelled) {
-            setErrorMessage("ARシーンでエラーが発生しました。コンソールを確認してください。");
+            setErrorMessage(
+              "MindARの起動エラーです。Safariのコンソールを確認してください。"
+            );
           }
         };
 
@@ -174,6 +177,9 @@ export default function WebARPage() {
         target.addEventListener("targetLost", onTargetLost);
         sceneElement.addEventListener("renderstart", onLoaded);
         sceneElement.addEventListener("arError", onError);
+        sceneElement.addEventListener("arReady", () => {
+          console.log("[AR] arReady: ARエンジン準備完了");
+        });
 
         // A-Frame の scene 初期化完了を待つ
         await new Promise<void>((resolve, reject) => {
