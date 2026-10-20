@@ -106,7 +106,7 @@ export default function WebARPage() {
 
         sceneElement.setAttribute(
           "mindar-image",
-          "imageTargetSrc: /assets/targets/target.mind; autoStart: false;"
+          "imageTargetSrc: /assets/targets/targets.mind; autoStart: false;"
         );
         sceneElement.setAttribute("color-space", "sRGB");
         sceneElement.setAttribute(
