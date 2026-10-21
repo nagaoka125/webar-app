@@ -1,7 +1,8 @@
-
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { STAMP_STORAGE_KEY, STAMPS } from "@/lib/stamps";
 
 type MindARSystem = {
   start: () => Promise<void>;
@@ -28,10 +29,12 @@ export default function WebARPage() {
   const arSystemRef = useRef<MindARSystem | null>(null);
   const sceneRef = useRef<AFrameSceneElement | null>(null);
   const videoObserverRef = useRef<MutationObserver | null>(null);
+  const router = useRouter();
 
   const [status, setStatus] = useState("ARライブラリを準備しています...");
   const [isReady, setIsReady] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
+  const [isARSuccsess, setIsARSuccsess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
   const loadScript = useCallback((src: string): Promise<void> => {
@@ -124,7 +127,6 @@ export default function WebARPage() {
       try {
         setStatus("ARライブラリを読み込んでいます...");
 
-        // A-Frame本体を先に登録し、その後MindARのA-Frame拡張を登録
         await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image.prod.js");
         await loadScript("/vendor/mindar-image-aframe.prod.js");
@@ -139,7 +141,6 @@ export default function WebARPage() {
 
         const container = containerRef.current;
 
-        // AR表示領域を確保
         Object.assign(container.style, {
           position: "relative",
           isolation: "isolate",
@@ -203,11 +204,17 @@ export default function WebARPage() {
         sceneElement.appendChild(target);
 
         const onTargetFound = () => {
-          if (!cancelled) setStatus("マーカーを認識しました");
+          if (!cancelled) {
+            setIsARSuccsess(true);
+            setStatus("マーカーを認識しました。スタンプ獲得ボタンを押してください");
+          }
         };
 
         const onTargetLost = () => {
-          if (!cancelled) setStatus("マーカーを探しています...");
+          if (!cancelled) {
+            setIsARSuccsess(false);
+            setStatus("マーカーを探しています...");
+          }
         };
 
         const onARReady = () => {
@@ -256,8 +263,6 @@ export default function WebARPage() {
 
         arSystemRef.current = system;
 
-        // MindARのvideoはa-sceneの親に作られるため、
-        // scene内ではなくコンテナ直下を監視する
         const updateVideoStyles = () => {
           if (cancelled) return;
 
@@ -272,7 +277,6 @@ export default function WebARPage() {
               maxHeight: "none",
             });
 
-            // MindAR自身が計算したtop/left/width/heightは上書きしない
             video.setAttribute("playsinline", "");
             video.setAttribute("autoplay", "");
             video.setAttribute("muted", "");
@@ -340,6 +344,7 @@ export default function WebARPage() {
       return;
     }
 
+    setIsARSuccsess(false);
     setStatus("カメラを起動しています...");
 
     try {
@@ -364,11 +369,49 @@ export default function WebARPage() {
     try {
       arSystemRef.current?.stop();
       setIsRunning(false);
+      setIsARSuccsess(false);
       setStatus("ARを停止しました");
       setErrorMessage("");
     } catch (error) {
       console.error("[AR] 停止失敗:", error);
       setErrorMessage("ARを停止できませんでした");
+    }
+  };
+
+  const getStamp = () => {
+    try {
+      if (!isARSuccsess || !isRunning) {
+        setErrorMessage("マーカーを認識してからスタンプを獲得してください。");
+        return;
+      }
+
+      const stampId = STAMPS[0]?.id;
+
+      if (!stampId) {
+        setErrorMessage("獲得できるスタンプがありません。");
+        return;
+      }
+
+      const saved = window.localStorage.getItem(STAMP_STORAGE_KEY);
+      const existing = saved ? JSON.parse(saved) : [];
+      const ids = Array.isArray(existing)
+        ? existing.filter(
+            (value): value is string =>
+              typeof value === "string" &&
+              STAMPS.some((stamp) => stamp.id === value)
+          )
+        : [];
+
+      const nextIds = [...new Set([...ids, stampId])];
+      window.localStorage.setItem(STAMP_STORAGE_KEY, JSON.stringify(nextIds));
+
+      setIsARSuccsess(false);
+      setStatus("スタンプを獲得しました！");
+      setErrorMessage("");
+      router.push("/stamp");
+    } catch (error) {
+      console.error("[AR] スタンプ獲得失敗:", error);
+      setErrorMessage("スタンプを獲得できませんでした。");
     }
   };
 
@@ -400,6 +443,15 @@ export default function WebARPage() {
           style={{ minHeight: 48, padding: "12px 16px", fontSize: 16 }}
         >
           AR停止
+        </button>
+
+        <button
+          type="button"
+          onClick={getStamp}
+          disabled={!isARSuccsess || !isRunning}
+          style={{ minHeight: 48, padding: "12px 16px", fontSize: 16 }}
+        >
+          スタンプ獲得
         </button>
       </div>
 
