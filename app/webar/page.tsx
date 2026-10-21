@@ -24,8 +24,6 @@ type MindARWindow = Window & {
   AFRAME?: AFrameAPI;
 };
 
-
-
 export default function WebARPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const sceneRefsRef = useRef<AFrameSceneElement[]>([]);
@@ -165,6 +163,9 @@ export default function WebARPage() {
             "a-scene"
           ) as AFrameSceneElement;
 
+          sceneElement.dataset.mindarTargetSrc = targetConfig.targetSrc;
+          sceneElement.dataset.targetStampId = targetConfig.stampId;
+
           sceneElement.setAttribute(
             "mindar-image",
             `imageTargetSrc: ${targetConfig.targetSrc}; autoStart: false;`
@@ -215,6 +216,7 @@ export default function WebARPage() {
 
           target.appendChild(model);
           sceneElement.appendChild(target);
+
           targetMapRef.current[targetConfig.stampId] = target;
 
           const onTargetFound = () => {
@@ -268,18 +270,14 @@ export default function WebARPage() {
         if (cancelled) return;
 
         for (const sceneElement of sceneRefsRef.current) {
-          const system = sceneElement.systems["mindar-image-system"];
-          const targetConfig = STAMPS.find(
-            (item) =>
-              item.targetSrc ===
-              sceneElement
-                .getAttribute("mindar-image")
-                ?.split("imageTargetSrc: ")[1]
-                ?.split("; autoStart: false;")[0]
+          const stamp = STAMPS.find(
+            (item) => item.targetSrc === sceneElement.dataset.mindarTargetSrc
           );
 
-          if (system && targetConfig) {
-            systemsRef.current[targetConfig.stampId] = system;
+          const system = sceneElement.systems["mindar-image-system"];
+
+          if (system && stamp) {
+            systemsRef.current[stamp.stampId] = system;
           }
         }
 
@@ -417,8 +415,7 @@ export default function WebARPage() {
       window.localStorage.setItem(STAMP_STORAGE_KEY, JSON.stringify(nextIds));
 
       const detectedLabel =
-        STAMPS.find((target) => target.stampId === detectedStampId)?.label ??
-        "スタンプ";
+        STAMPS.find((target) => target.stampId === detectedStampId)?.label ?? "スタンプ";
 
       setDetectedStampId(null);
       showTarget(null);
@@ -511,5 +508,3 @@ export default function WebARPage() {
     </main>
   );
 }
-
-
