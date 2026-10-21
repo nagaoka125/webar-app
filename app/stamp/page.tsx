@@ -55,7 +55,7 @@ export default function StampPage() {
     <main style={styles.page}>
       <header style={styles.header}>
         <Link href="/" style={styles.backLink}>
-          ← ARページへ戻る
+          ← メインページへ戻る
         </Link>
 
         <h1 style={styles.title}>スタンプ帳</h1>

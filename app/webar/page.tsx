@@ -198,7 +198,7 @@ export default function WebARPage() {
         model.setAttribute("src", "#ar-model");
         model.setAttribute("position", "0 0 0.1");
         model.setAttribute("rotation", "0 0 0");
-        model.setAttribute("scale", "0.2 0.2 0.2");
+        model.setAttribute("scale", "0.8 0.8 0.8");
 
         target.appendChild(model);
         sceneElement.appendChild(target);
