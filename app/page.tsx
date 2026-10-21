@@ -1,3 +1,4 @@
+"use client"
 import CameraButton from "./components/CameraButton"
 import { useRouter } from "next/router"
 
