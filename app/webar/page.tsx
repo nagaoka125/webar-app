@@ -24,51 +24,21 @@ type MindARWindow = Window & {
   AFRAME?: AFrameAPI;
 };
 
-type TargetConfig = {
-  stampId: string;
-  label: string;
-  targetSrc: string;
-  modelSrc: string;
-};
 
-const TARGET_CONFIGS: TargetConfig[] = [
-  {
-    stampId: "stamp-01",
-    label: "ターゲット 1",
-    targetSrc: "/assets/targets/targets.mind",
-    modelSrc: "/assets/models/model.glb",
-  },
-  {
-    stampId: "stamp-02",
-    label: "ターゲット 2",
-    targetSrc: "/assets/targets/targets02.mind",
-    modelSrc: "/assets/models/model02.glb",
-  },
-  {
-    stampId: "stamp-03",
-    label: "ターゲット 3",
-    targetSrc: "/assets/targets/targets03.mind",
-    modelSrc: "/assets/models/model03.glb",
-  },
-];
 
 export default function WebARPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const arSystemRef = useRef<MindARSystem | null>(null);
-  const sceneRef = useRef<AFrameSceneElement | null>(null);
+  const sceneRefsRef = useRef<AFrameSceneElement[]>([]);
+  const systemsRef = useRef<Record<string, MindARSystem>>({});
+  const targetMapRef = useRef<Record<string, HTMLElement>>({});
   const videoObserverRef = useRef<MutationObserver | null>(null);
   const router = useRouter();
-
-  const [selectedStampId, setSelectedStampId] = useState(TARGET_CONFIGS[0].stampId);
-  const selectedTarget =
-    TARGET_CONFIGS.find((target) => target.stampId === selectedStampId) ??
-    TARGET_CONFIGS[0];
 
   const [status, setStatus] = useState("ARライブラリを準備しています...");
   const [isReady, setIsReady] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
-  const [isARSuccsess, setIsARSuccsess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [detectedStampId, setDetectedStampId] = useState<string | null>(null);
 
   const loadScript = useCallback((src: string): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -151,17 +121,20 @@ export default function WebARPage() {
     []
   );
 
+  const showTarget = useCallback((stampId: string | null) => {
+    Object.entries(targetMapRef.current).forEach(([id, element]) => {
+      element.setAttribute("visible", id === stampId ? "true" : "false");
+    });
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    let cleanupEvents = () => {};
-    let scene: AFrameSceneElement | null = null;
 
     const initialize = async () => {
       try {
-        setStatus(`${selectedTarget.label}のARライブラリを読み込んでいます...`);
+        setStatus("ARライブラリを読み込んでいます...");
         setErrorMessage("");
-        setIsRunning(false);
-        setIsARSuccsess(false);
+        setDetectedStampId(null);
 
         await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image.prod.js");
@@ -171,6 +144,9 @@ export default function WebARPage() {
 
         const container = containerRef.current;
         container.innerHTML = "";
+        sceneRefsRef.current = [];
+        systemsRef.current = {};
+        targetMapRef.current = {};
 
         const AFRAME = (window as MindARWindow).AFRAME;
         if (!AFRAME) {
@@ -184,121 +160,128 @@ export default function WebARPage() {
           background: "#000",
         });
 
-        const sceneElement = document.createElement(
-          "a-scene"
-        ) as AFrameSceneElement;
+        for (const targetConfig of STAMPS) {
+          const sceneElement = document.createElement(
+            "a-scene"
+          ) as AFrameSceneElement;
 
-        sceneElement.setAttribute(
-          "mindar-image",
-          `imageTargetSrc: ${selectedTarget.targetSrc}; autoStart: false;`
+          sceneElement.setAttribute(
+            "mindar-image",
+            `imageTargetSrc: ${targetConfig.targetSrc}; autoStart: false;`
+          );
+          sceneElement.setAttribute("color-space", "sRGB");
+          sceneElement.setAttribute(
+            "renderer",
+            "colorManagement: true; alpha: true; physicallyCorrectLights: true"
+          );
+          sceneElement.setAttribute("vr-mode-ui", "enabled: false");
+          sceneElement.setAttribute(
+            "device-orientation-permission-ui",
+            "enabled: false"
+          );
+          sceneElement.setAttribute("embedded", "");
+
+          Object.assign(sceneElement.style, {
+            position: "absolute",
+            inset: "0",
+            width: "100%",
+            height: "100%",
+            zIndex: "1",
+            background: "transparent",
+          });
+
+          const assets = document.createElement("a-assets");
+          const modelAsset = document.createElement("a-asset-item");
+          modelAsset.setAttribute("id", `ar-model-${targetConfig.stampId}`);
+          modelAsset.setAttribute("src", targetConfig.modelSrc);
+          assets.appendChild(modelAsset);
+          sceneElement.appendChild(assets);
+
+          const camera = document.createElement("a-camera");
+          camera.setAttribute("position", "0 0 0");
+          camera.setAttribute("look-controls", "enabled: false");
+          camera.setAttribute("wasd-controls", "enabled: false");
+          sceneElement.appendChild(camera);
+
+          const target = document.createElement("a-entity");
+          target.setAttribute("mindar-image-target", "targetIndex: 0");
+          target.setAttribute("visible", "false");
+
+          const model = document.createElement("a-gltf-model");
+          model.setAttribute("src", `#ar-model-${targetConfig.stampId}`);
+          model.setAttribute("position", "0 0 0.1");
+          model.setAttribute("rotation", "0 0 0");
+          model.setAttribute("scale", "0.2 0.2 0.2");
+
+          target.appendChild(model);
+          sceneElement.appendChild(target);
+          targetMapRef.current[targetConfig.stampId] = target;
+
+          const onTargetFound = () => {
+            if (!cancelled) {
+              setDetectedStampId(targetConfig.stampId);
+              showTarget(targetConfig.stampId);
+              setStatus(
+                `${targetConfig.label}を認識しました。スタンプ獲得ボタンを押してください`
+              );
+            }
+          };
+
+          const onTargetLost = () => {
+            if (!cancelled) {
+              setStatus(`${targetConfig.label}を探しています...`);
+              if (detectedStampId === targetConfig.stampId) {
+                setDetectedStampId(null);
+                showTarget(null);
+              }
+            }
+          };
+
+          const onARReady = () => {
+            if (!cancelled) {
+              setStatus(`${targetConfig.label}の準備完了。マーカーを映してください`);
+            }
+          };
+
+          const onARError = (event: Event) => {
+            console.error("[AR] arError:", event);
+            if (!cancelled) {
+              setErrorMessage(
+                "ARエンジンでエラーが発生しました。カメラ権限と画像ターゲットを確認してください。"
+              );
+            }
+          };
+
+          target.addEventListener("targetFound", onTargetFound);
+          target.addEventListener("targetLost", onTargetLost);
+          sceneElement.addEventListener("arReady", onARReady);
+          sceneElement.addEventListener("arError", onARError);
+
+          container.appendChild(sceneElement);
+          sceneRefsRef.current.push(sceneElement);
+        }
+
+        await Promise.all(
+          sceneRefsRef.current.map((sceneElement) => waitForScene(sceneElement))
         );
-        sceneElement.setAttribute("color-space", "sRGB");
-        sceneElement.setAttribute(
-          "renderer",
-          "colorManagement: true; alpha: true; physicallyCorrectLights: true"
-        );
-        sceneElement.setAttribute("vr-mode-ui", "enabled: false");
-        sceneElement.setAttribute(
-          "device-orientation-permission-ui",
-          "enabled: false"
-        );
-        sceneElement.setAttribute("embedded", "");
-
-        Object.assign(sceneElement.style, {
-          position: "absolute",
-          inset: "0",
-          width: "100%",
-          height: "100%",
-          zIndex: "1",
-          background: "transparent",
-        });
-
-        const assets = document.createElement("a-assets");
-        const modelAsset = document.createElement("a-asset-item");
-
-        modelAsset.setAttribute("id", "ar-model");
-        modelAsset.setAttribute("src", selectedTarget.modelSrc);
-        assets.appendChild(modelAsset);
-        sceneElement.appendChild(assets);
-
-        const camera = document.createElement("a-camera");
-        camera.setAttribute("position", "0 0 0");
-        camera.setAttribute("look-controls", "enabled: false");
-        camera.setAttribute("wasd-controls", "enabled: false");
-        sceneElement.appendChild(camera);
-
-        const target = document.createElement("a-entity");
-        target.setAttribute("mindar-image-target", "targetIndex: 0");
-
-        const model = document.createElement("a-gltf-model");
-        model.setAttribute("src", "#ar-model");
-        model.setAttribute("position", "0 0 0.1");
-        model.setAttribute("rotation", "0 0 0");
-        model.setAttribute("scale", "0.8 0.8 0.8");
-
-        target.appendChild(model);
-        sceneElement.appendChild(target);
-
-        const onTargetFound = () => {
-          if (!cancelled) {
-            setIsARSuccsess(true);
-            setStatus(
-              `${selectedTarget.label}を認識しました。スタンプ獲得ボタンを押してください`
-            );
-          }
-        };
-
-        const onTargetLost = () => {
-          if (!cancelled) {
-            setIsARSuccsess(false);
-            setStatus(`${selectedTarget.label}を探しています...`);
-          }
-        };
-
-        const onARReady = () => {
-          if (!cancelled) {
-            setStatus(`${selectedTarget.label}の準備完了。マーカーを映してください`);
-          }
-        };
-
-        const onARError = (event: Event) => {
-          console.error("[AR] arError:", event);
-
-          if (!cancelled) {
-            setErrorMessage(
-              "ARエンジンでエラーが発生しました。カメラ権限と画像ターゲットを確認してください。"
-            );
-          }
-        };
-
-        target.addEventListener("targetFound", onTargetFound);
-        target.addEventListener("targetLost", onTargetLost);
-        sceneElement.addEventListener("arReady", onARReady);
-        sceneElement.addEventListener("arError", onARError);
-
-        cleanupEvents = () => {
-          target.removeEventListener("targetFound", onTargetFound);
-          target.removeEventListener("targetLost", onTargetLost);
-          sceneElement.removeEventListener("arReady", onARReady);
-          sceneElement.removeEventListener("arError", onARError);
-        };
-
-        container.appendChild(sceneElement);
-        scene = sceneElement;
-        sceneRef.current = sceneElement;
-
-        await waitForScene(sceneElement);
 
         if (cancelled) return;
 
-        const system = sceneElement.systems["mindar-image-system"];
-        if (!system) {
-          throw new Error(
-            "MindARシステムが見つかりません。vendor内のライブラリを確認してください。"
+        for (const sceneElement of sceneRefsRef.current) {
+          const system = sceneElement.systems["mindar-image-system"];
+          const targetConfig = STAMPS.find(
+            (item) =>
+              item.targetSrc ===
+              sceneElement
+                .getAttribute("mindar-image")
+                ?.split("imageTargetSrc: ")[1]
+                ?.split("; autoStart: false;")[0]
           );
-        }
 
-        arSystemRef.current = system;
+          if (system && targetConfig) {
+            systemsRef.current[targetConfig.stampId] = system;
+          }
+        }
 
         const updateVideoStyles = () => {
           if (cancelled) return;
@@ -318,7 +301,7 @@ export default function WebARPage() {
             video.setAttribute("muted", "");
           });
 
-          const canvas = sceneElement.querySelector("canvas");
+          const canvas = container.querySelector("canvas");
           if (canvas) {
             canvas.style.background = "transparent";
           }
@@ -332,9 +315,9 @@ export default function WebARPage() {
         videoObserverRef.current = observer;
 
         updateVideoStyles();
-
+        showTarget(null);
         setIsReady(true);
-        setStatus(`${selectedTarget.label}のARの準備完了。開始ボタンを押してください`);
+        setStatus("ARの準備完了。マーカーを映してください");
       } catch (error) {
         console.error("[AR] 初期化失敗:", error);
 
@@ -353,41 +336,42 @@ export default function WebARPage() {
 
     return () => {
       cancelled = true;
-      cleanupEvents();
       videoObserverRef.current?.disconnect();
       videoObserverRef.current = null;
 
-      try {
-        arSystemRef.current?.stop();
-      } catch (error) {
-        console.warn("[AR] 停止時のエラー:", error);
-      }
+      Object.values(systemsRef.current).forEach((system) => {
+        try {
+          system.stop();
+        } catch (error) {
+          console.warn("[AR] 停止時のエラー:", error);
+        }
+      });
 
-      arSystemRef.current = null;
-      sceneRef.current = null;
-      scene?.remove();
+      systemsRef.current = {};
+      sceneRefsRef.current.forEach((scene) => scene.remove());
+      sceneRefsRef.current = [];
+      targetMapRef.current = {};
+      showTarget(null);
     };
-  }, [loadScript, selectedTarget, waitForScene]);
+  }, [loadScript, showTarget, waitForScene]);
 
   const startAR = async () => {
     setErrorMessage("");
 
-    const system = arSystemRef.current;
-    if (!system || !isReady) {
+    const systems = Object.values(systemsRef.current);
+    if (!systems.length || !isReady) {
       setErrorMessage("MindARの準備ができていません。ページを再読み込みしてください。");
       return;
     }
 
-    setIsARSuccsess(false);
-    setStatus(`${selectedTarget.label}のカメラを起動しています...`);
+    setStatus("カメラを起動しています...");
 
     try {
-      await system.start();
+      await Promise.all(systems.map((system) => system.start()));
       setIsRunning(true);
-      setStatus(`${selectedTarget.label}のカメラ起動完了。マーカーを映してください`);
+      setStatus("カメラ起動完了。マーカーを映してください");
     } catch (error) {
       console.error("[AR] カメラ起動失敗:", error);
-
       setIsRunning(false);
       setStatus("カメラを起動できませんでした");
       setErrorMessage(
@@ -400,10 +384,11 @@ export default function WebARPage() {
 
   const stopAR = () => {
     try {
-      arSystemRef.current?.stop();
+      Object.values(systemsRef.current).forEach((system) => system.stop());
       setIsRunning(false);
-      setIsARSuccsess(false);
-      setStatus(`${selectedTarget.label}のARを停止しました`);
+      setDetectedStampId(null);
+      showTarget(null);
+      setStatus("ARを停止しました");
       setErrorMessage("");
     } catch (error) {
       console.error("[AR] 停止失敗:", error);
@@ -413,12 +398,11 @@ export default function WebARPage() {
 
   const getStamp = () => {
     try {
-      if (!isARSuccsess || !isRunning) {
+      if (!detectedStampId || !isRunning) {
         setErrorMessage("マーカーを認識してからスタンプを獲得してください。");
         return;
       }
 
-      const stampId = selectedTarget.stampId;
       const saved = window.localStorage.getItem(STAMP_STORAGE_KEY);
       const existing = saved ? JSON.parse(saved) : [];
       const ids = Array.isArray(existing)
@@ -429,11 +413,16 @@ export default function WebARPage() {
           )
         : [];
 
-      const nextIds = [...new Set([...ids, stampId])];
+      const nextIds = [...new Set([...ids, detectedStampId])];
       window.localStorage.setItem(STAMP_STORAGE_KEY, JSON.stringify(nextIds));
 
-      setIsARSuccsess(false);
-      setStatus(`${selectedTarget.label}のスタンプを獲得しました！`);
+      const detectedLabel =
+        STAMPS.find((target) => target.stampId === detectedStampId)?.label ??
+        "スタンプ";
+
+      setDetectedStampId(null);
+      showTarget(null);
+      setStatus(`${detectedLabel}を獲得しました！`);
       setErrorMessage("");
       router.push("/stamp");
     } catch (error) {
@@ -441,6 +430,9 @@ export default function WebARPage() {
       setErrorMessage("スタンプを獲得できませんでした。");
     }
   };
+
+  const activeTarget =
+    STAMPS.find((target) => target.stampId === detectedStampId) ?? null;
 
   return (
     <main
@@ -453,28 +445,13 @@ export default function WebARPage() {
     >
       <h1>マーカー型 WebAR</h1>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {TARGET_CONFIGS.map((target) => (
-          <button
-            key={target.stampId}
-            type="button"
-            onClick={() => setSelectedStampId(target.stampId)}
-            style={{
-              minHeight: 40,
-              padding: "8px 12px",
-              fontSize: 14,
-              border: selectedStampId === target.stampId ? "2px solid #2563eb" : "1px solid #d1d5db",
-              background: selectedStampId === target.stampId ? "#dbeafe" : "#fff",
-            }}
-          >
-            {target.label}
-          </button>
-        ))}
-      </div>
+      <p>マーカーを認識すると、自動で対応する模型を表示します。</p>
 
-      <p>
-        現在の対象: <strong>{selectedTarget.label}</strong>
-      </p>
+      {activeTarget && (
+        <p>
+          認識中: <strong>{activeTarget.label}</strong>
+        </p>
+      )}
 
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button
@@ -498,10 +475,10 @@ export default function WebARPage() {
         <button
           type="button"
           onClick={getStamp}
-          disabled={!isARSuccsess || !isRunning}
+          disabled={!detectedStampId || !isRunning}
           style={{ minHeight: 48, padding: "12px 16px", fontSize: 16 }}
         >
-          {selectedTarget.label}のスタンプ獲得
+          {activeTarget ? `${activeTarget.label}のスタンプ獲得` : "スタンプ獲得"}
         </button>
       </div>
 
@@ -534,3 +511,5 @@ export default function WebARPage() {
     </main>
   );
 }
+
+
