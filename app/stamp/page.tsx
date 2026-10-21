@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import CameraButton from "../components/CameraButton";
 import {
   STAMPS,
   STAMP_STORAGE_KEY,
@@ -154,9 +155,7 @@ export default function StampPage() {
       </section>
 
       <footer style={styles.footer}>
-        <Link href="/" style={styles.mainButton}>
-          ARでスタンプを集める
-        </Link>
+        <CameraButton />
 
         <button
           type="button"
