@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,11 +23,26 @@ type MindARWindow = Window & {
   AFRAME?: AFrameAPI;
 };
 
+type TargetRecord = {
+  stampId: string;
+  label: string;
+  modelSrc: string;
+  target: HTMLElement;
+  model: HTMLElement;
+  loaded: boolean;
+  loading: boolean;
+  loadToken: number;
+};
+
 export default function WebARPage() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const systemRef = useRef<MindARSystem | null>(null);
   const sceneRef = useRef<AFrameSceneElement | null>(null);
   const detectedIdRef = useRef<string | null>(null);
+  const targetsRef = useRef<Map<string, TargetRecord>>(new Map());
+  const loadingTokensRef = useRef<Map<string, number>>(new Map());
+  const startPromiseRef = useRef<Promise<void> | null>(null);
+  const runningRef = useRef(false);
 
   const router = useRouter();
 
@@ -36,9 +52,8 @@ export default function WebARPage() {
   const [isReady, setIsReady] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [detectedStampId, setDetectedStampId] = useState<string | null>(
-    null
-  );
+  const [detectedStampId, setDetectedStampId] =
+    useState<string | null>(null);
 
   const loadScript = useCallback((src: string): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -102,9 +117,7 @@ export default function WebARPage() {
 
         const timeout = window.setTimeout(() => {
           cleanup();
-          reject(
-            new Error("ARシーンの初期化がタイムアウトしました")
-          );
+          reject(new Error("ARシーンの初期化がタイムアウトしました"));
         }, 20000);
 
         const onLoaded = () => {
@@ -122,6 +135,84 @@ export default function WebARPage() {
     []
   );
 
+  /**
+   * マーカーが認識されたときだけ、対応する3Dモデルを読み込む。
+   * 読み込み済みのモデルは再利用する。
+   */
+  const loadModelForTarget = useCallback(
+    (record: TargetRecord) => {
+      if (record.loaded || record.loading) {
+        return;
+      }
+
+      record.loading = true;
+
+      const token =
+        (loadingTokensRef.current.get(record.stampId) ?? 0) + 1;
+
+      loadingTokensRef.current.set(record.stampId, token);
+      record.loadToken = token;
+
+      setStatus(`${record.label}の模型を読み込んでいます...`);
+
+      // glTFモデルの読み込みはA-Frameに任せる。
+      // マーカー認識前にはsrcを設定しない。
+      record.model.setAttribute("gltf-model", record.modelSrc);
+
+      const isCurrentLoad = () =>
+        loadingTokensRef.current.get(record.stampId) === token;
+
+      const onLoaded = () => {
+        record.model.removeEventListener("model-loaded", onLoaded);
+        record.model.removeEventListener("model-error", onError);
+
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        record.loading = false;
+        record.loaded = true;
+
+        if (detectedIdRef.current === record.stampId) {
+          setStatus(
+            `${record.label}を認識しました。スタンプ獲得ボタンを押してください`
+          );
+        }
+      };
+
+      const onError = (event: Event) => {
+        record.model.removeEventListener("model-loaded", onLoaded);
+        record.model.removeEventListener("model-error", onError);
+
+        if (!isCurrentLoad()) {
+          return;
+        }
+
+        record.loading = false;
+        record.loaded = false;
+
+        console.error(
+          `[AR] モデル読み込み失敗: ${record.modelSrc}`,
+          event
+        );
+
+        if (detectedIdRef.current === record.stampId) {
+          setErrorMessage(
+            `${record.label}の模型を読み込めませんでした。モデルのURLとファイル形式を確認してください。`
+          );
+          setStatus("模型の読み込みに失敗しました");
+        }
+
+        // 次回の認識時に再試行できるようにする。
+        record.model.removeAttribute("gltf-model");
+      };
+
+      record.model.addEventListener("model-loaded", onLoaded);
+      record.model.addEventListener("model-error", onError);
+    },
+    []
+  );
+
   useEffect(() => {
     let cancelled = false;
     let scene: AFrameSceneElement | null = null;
@@ -133,7 +224,10 @@ export default function WebARPage() {
         setStatus("ARライブラリを読み込んでいます...");
         setErrorMessage("");
         setDetectedStampId(null);
+        setIsReady(false);
         detectedIdRef.current = null;
+        targetsRef.current.clear();
+        loadingTokensRef.current.clear();
 
         if (STAMPS.length === 0) {
           throw new Error(
@@ -141,7 +235,6 @@ export default function WebARPage() {
           );
         }
 
-        // MindAR本体 → A-Frame → MindARのA-Frame拡張
         await loadScript("/vendor/mindar-image.prod.js");
         await loadScript("/vendor/aframe.min.js");
         await loadScript("/vendor/mindar-image-aframe.prod.js");
@@ -164,7 +257,7 @@ export default function WebARPage() {
           background: "#000",
         });
 
-        // MindARシーンは1つだけ作る
+        // MindARシーンは1つだけ。
         const sceneElement = document.createElement(
           "a-scene"
         ) as AFrameSceneElement;
@@ -182,19 +275,15 @@ export default function WebARPage() {
         );
 
         sceneElement.setAttribute("color-space", "sRGB");
-
         sceneElement.setAttribute(
           "renderer",
           "colorManagement: true; alpha: true"
         );
-
         sceneElement.setAttribute("vr-mode-ui", "enabled: false");
-
         sceneElement.setAttribute(
           "device-orientation-permission-ui",
           "enabled: false"
         );
-
         sceneElement.setAttribute("embedded", "");
 
         Object.assign(sceneElement.style, {
@@ -206,66 +295,61 @@ export default function WebARPage() {
           background: "transparent",
         });
 
-        // 3Dモデルのアセットを登録
-        const assets = document.createElement("a-assets");
+        // 全モデルのa-assets登録は行わない。
+        // モデルはtargetFound後に個別ロードする。
 
-        STAMPS.forEach((stamp) => {
-          const asset = document.createElement("a-asset-item");
-
-          asset.setAttribute(
-            "id",
-            `ar-model-${stamp.stampId}`
-          );
-
-          asset.setAttribute("src", stamp.modelSrc);
-          assets.appendChild(asset);
-        });
-
-        sceneElement.appendChild(assets);
-
-        // カメラも1つだけ
         const camera = document.createElement("a-camera");
-
         camera.setAttribute("position", "0 0 0");
         camera.setAttribute("look-controls", "enabled: false");
         camera.setAttribute("wasd-controls", "enabled: false");
-
         sceneElement.appendChild(camera);
 
-        // 1つのシーンに全ターゲットと対応モデルを登録
         STAMPS.forEach((stamp, index) => {
           const target = document.createElement("a-entity");
 
-          // all-targets.mind の画像順と一致させる
           target.setAttribute(
             "mindar-image-target",
             `targetIndex: ${index}`
           );
 
-          const model = document.createElement("a-gltf-model");
-
-          model.setAttribute(
-            "src",
-            `#ar-model-${stamp.stampId}`
-          );
+          // 初期状態ではモデルのsrcを設定しない。
+          // 認識されるまで3Dモデルの読み込みを開始しない。
+          const model = document.createElement("a-entity");
 
           model.setAttribute("position", "0 0 0.1");
           model.setAttribute("rotation", "0 0 0");
           model.setAttribute("scale", "0.2 0.2 0.2");
 
           target.appendChild(model);
+          sceneElement.appendChild(target);
+
+          const record: TargetRecord = {
+            stampId: stamp.stampId,
+            label: stamp.label,
+            modelSrc: stamp.modelSrc,
+            target,
+            model,
+            loaded: false,
+            loading: false,
+            loadToken: 0,
+          };
+
+          targetsRef.current.set(stamp.stampId, record);
 
           target.addEventListener("targetFound", () => {
             if (cancelled) return;
 
             detectedIdRef.current = stamp.stampId;
             setDetectedStampId(stamp.stampId);
-
-            setStatus(
-              `${stamp.label}を認識しました。スタンプ獲得ボタンを押してください`
-            );
-
             setErrorMessage("");
+
+            if (record.loaded) {
+              setStatus(
+                `${stamp.label}を認識しました。スタンプ獲得ボタンを押してください`
+              );
+            } else {
+              loadModelForTarget(record);
+            }
           });
 
           target.addEventListener("targetLost", () => {
@@ -275,17 +359,17 @@ export default function WebARPage() {
               detectedIdRef.current = null;
               setDetectedStampId(null);
               setStatus("マーカーを探しています...");
+              setErrorMessage("");
             }
-          });
 
-          sceneElement.appendChild(target);
+            // ここではモデルを破棄しない。
+            // 再認識時に読み込み済みのモデルを再利用する。
+          });
         });
 
         const onARReady = () => {
           if (!cancelled) {
-            setStatus(
-              "カメラ起動完了。マーカーを映してください"
-            );
+            setStatus("カメラ起動完了。マーカーを映してください");
           }
         };
 
@@ -326,8 +410,8 @@ export default function WebARPage() {
 
         systemRef.current = system;
 
-        // MindARの動画はa-sceneの親要素に追加される
-        // ただしMindAR自身が設定する映像サイズは上書きしない
+        // MindARの動画はa-sceneの親要素に追加される。
+        // MindAR自身が設定する映像サイズは変更しない。
         const updateVideoStyles = () => {
           if (cancelled) return;
 
@@ -353,7 +437,6 @@ export default function WebARPage() {
         };
 
         videoObserver = new MutationObserver(updateVideoStyles);
-
         videoObserver.observe(container, {
           childList: true,
           subtree: true,
@@ -362,9 +445,7 @@ export default function WebARPage() {
         updateVideoStyles();
 
         setIsReady(true);
-        setStatus(
-          "ARの準備完了。開始ボタンを押してください"
-        );
+        setStatus("ARの準備完了。開始ボタンを押してください");
       } catch (error) {
         console.error("[AR] 初期化失敗:", error);
 
@@ -374,7 +455,6 @@ export default function WebARPage() {
               ? error.message
               : "ARの初期化に失敗しました"
           );
-
           setStatus("ARを初期化できませんでした");
         }
       }
@@ -395,11 +475,21 @@ export default function WebARPage() {
 
       systemRef.current = null;
       sceneRef.current = null;
+      startPromiseRef.current = null;
+      runningRef.current = false;
+
+      targetsRef.current.clear();
+      loadingTokensRef.current.clear();
+
       scene?.remove();
     };
-  }, [loadScript, waitForScene]);
+  }, [loadScript, waitForScene, loadModelForTarget]);
 
   const startAR = async () => {
+    if (startPromiseRef.current) {
+      return;
+    }
+
     setErrorMessage("");
 
     const system = systemRef.current;
@@ -411,34 +501,43 @@ export default function WebARPage() {
       return;
     }
 
-    try {
-      setStatus("カメラを起動しています...");
+    if (runningRef.current) return;
 
-      // 起動するMindARシステムは1つだけ
-      await system.start();
+    setStatus("カメラを起動しています...");
 
-      setIsRunning(true);
-      setStatus(
-        "カメラ起動完了。マーカーを映してください"
-      );
-    } catch (error) {
-      console.error("[AR] 起動失敗:", error);
+    const startPromise = (async () => {
+      try {
+        await system.start();
 
-      setIsRunning(false);
-      setStatus("カメラを起動できませんでした");
+        runningRef.current = true;
+        setIsRunning(true);
+        setStatus("カメラ起動完了。マーカーを映してください");
+      } catch (error) {
+        console.error("[AR] 起動失敗:", error);
 
-      setErrorMessage(
-        error instanceof Error
-          ? `${error.name}: ${error.message}`
-          : String(error)
-      );
-    }
+        runningRef.current = false;
+        setIsRunning(false);
+        setStatus("カメラを起動できませんでした");
+
+        setErrorMessage(
+          error instanceof Error
+            ? `${error.name}: ${error.message}`
+            : String(error)
+        );
+      } finally {
+        startPromiseRef.current = null;
+      }
+    })();
+
+    startPromiseRef.current = startPromise;
+    await startPromise;
   };
 
   const stopAR = () => {
     try {
       systemRef.current?.stop();
 
+      runningRef.current = false;
       setIsRunning(false);
       detectedIdRef.current = null;
       setDetectedStampId(null);
@@ -454,17 +553,14 @@ export default function WebARPage() {
     try {
       const stampId = detectedIdRef.current;
 
-      if (!stampId || !isRunning) {
+      if (!stampId || !runningRef.current) {
         setErrorMessage(
           "マーカーを認識してからスタンプを獲得してください。"
         );
         return;
       }
 
-      const saved = window.localStorage.getItem(
-        STAMP_STORAGE_KEY
-      );
-
+      const saved = window.localStorage.getItem(STAMP_STORAGE_KEY);
       const existing: unknown = saved ? JSON.parse(saved) : [];
 
       const ids = Array.isArray(existing)
@@ -475,9 +571,8 @@ export default function WebARPage() {
           )
         : [];
 
-      const nextIds = [
-        ...new Set([...ids, stampId]),
-      ];
+      // stampIdとstamp.idが同じ形式であることを前提に保存する。
+      const nextIds = [...new Set([...ids, stampId])];
 
       window.localStorage.setItem(
         STAMP_STORAGE_KEY,
@@ -485,8 +580,8 @@ export default function WebARPage() {
       );
 
       const label =
-        STAMPS.find((stamp) => stamp.stampId === stampId)
-          ?.label ?? "スタンプ";
+        STAMPS.find((stamp) => stamp.stampId === stampId)?.label ??
+        "スタンプ";
 
       setStatus(`${label}を獲得しました！`);
       setErrorMessage("");
@@ -499,9 +594,7 @@ export default function WebARPage() {
   };
 
   const activeTarget =
-    STAMPS.find(
-      (stamp) => stamp.stampId === detectedStampId
-    ) ?? null;
+    STAMPS.find((stamp) => stamp.stampId === detectedStampId) ?? null;
 
   return (
     <main
@@ -515,7 +608,7 @@ export default function WebARPage() {
       <h1>マーカー型 WebAR</h1>
 
       <p>
-        マーカーを認識すると、対応する模型を自動で表示します。
+        マーカーを認識すると、対応する模型を読み込んで表示します。
       </p>
 
       {activeTarget && (
