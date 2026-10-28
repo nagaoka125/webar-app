@@ -7,38 +7,54 @@ import {
   STAMPS,
   STAMP_STORAGE_KEY,
 } from "@/lib/stamps";
-import { setAbortedLogsStyle } from "next/dist/server/node-environment-extensions/console-dim.external";
 
 export default function StampPage() {
   const [ownedStamps, setOwnedStamps] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
+
     try {
       const saved = window.localStorage.getItem(STAMP_STORAGE_KEY);
       if (!saved) return [];
-      const parsed: unknown = JSON.parse(saved);
 
+      const parsed: unknown = JSON.parse(saved)
       if (!Array.isArray(parsed)) return [];
       
       const validIds = parsed.filter(
         (id): id is string =>
-          typeof id === "string" &&
-          STAMPS.some((stamp) => stamp.id === id)
+        typeof id === "string" &&
+        STAMPS.some((stamp) => stamp.id === id)
       );
 
-      return([...new Set(validIds)]);
+      return [...new Set(validIds)];
     } catch (error) {
       console.error("スタンプ情報の読み込みに失敗しました", error);
-      return[];
+      return [];
     }
   });
-
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [selectedStampId, setSelectedStampId] = useState<string | null>(null);
+
+  // モーダル表示中はEscapeキーで閉じられるようにする
+  useEffect(() => {
+    if (!selectedStampId && !showResetConfirm) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedStampId(null);
+        setShowResetConfirm(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedStampId, showResetConfirm]);
 
   const resetStamps = () => {
     try {
-      localStorage.removeItem(STAMP_STORAGE_KEY);
+      window.localStorage.removeItem(STAMP_STORAGE_KEY);
       setOwnedStamps([]);
       setShowResetConfirm(false);
+      setSelectedStampId(null);
     } catch (error) {
       console.error("スタンプ情報のリセットに失敗しました", error);
     }
@@ -50,6 +66,12 @@ export default function StampPage() {
     totalCount === 0
       ? 0
       : Math.round((ownedCount / totalCount) * 100);
+
+  const selectedStamp =
+    STAMPS.find((stamp) => stamp.id === selectedStampId) ?? null;
+
+  const selectedStampOwned =
+    selectedStamp !== null && ownedStamps.includes(selectedStamp.id);
 
   return (
     <main style={styles.page}>
@@ -103,17 +125,28 @@ export default function StampPage() {
       <section>
         <h2 style={styles.sectionTitle}>コレクション</h2>
 
+        <p style={styles.hint}>
+          カードを押すとスタンプの詳細を確認できます。
+        </p>
+
         <div style={styles.grid}>
           {STAMPS.map((stamp) => {
             const owned = ownedStamps.includes(stamp.id);
 
             return (
-              <article
+              <button
                 key={stamp.id}
+                type="button"
+                onClick={() => setSelectedStampId(stamp.id)}
                 style={{
                   ...styles.stampCard,
                   ...(owned ? {} : styles.lockedCard),
                 }}
+                aria-label={
+                  owned
+                    ? `${stamp.name}の詳細を表示`
+                    : "未獲得スタンプの詳細を表示"
+                }
               >
                 <div style={styles.imageArea}>
                   {owned ? (
@@ -123,10 +156,7 @@ export default function StampPage() {
                       style={styles.stampImage}
                     />
                   ) : (
-                    <div
-                      style={styles.lockedImage}
-                      aria-label="未獲得"
-                    >
+                    <div style={styles.lockedImage} aria-hidden="true">
                       ?
                     </div>
                   )}
@@ -137,7 +167,9 @@ export default function StampPage() {
                 </h3>
 
                 <p style={styles.stampDescription}>
-                  {owned ? stamp.description : "まだ獲得していません"}
+                  {owned
+                    ? stamp.description
+                    : "まだ獲得していません"}
                 </p>
 
                 <span
@@ -148,7 +180,9 @@ export default function StampPage() {
                 >
                   {owned ? "獲得済み" : "未獲得"}
                 </span>
-              </article>
+
+                <span style={styles.detailHint}>タップして詳細を見る</span>
+              </button>
             );
           })}
         </div>
@@ -167,13 +201,85 @@ export default function StampPage() {
         </button>
       </footer>
 
+      {/* スタンプ詳細モーダル */}
+      {selectedStamp && (
+        <div
+          style={styles.overlay}
+          onClick={() => setSelectedStampId(null)}
+        >
+          <section
+            style={styles.detailDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stamp-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedStampId(null)}
+              style={styles.closeButton}
+              aria-label="詳細を閉じる"
+            >
+              ×
+            </button>
+
+            <div style={styles.detailImageArea}>
+              {selectedStampOwned ? (
+                <img
+                  src={selectedStamp.image}
+                  alt={selectedStamp.name}
+                  style={styles.detailImage}
+                />
+              ) : (
+                <div style={styles.detailLockedImage}>?</div>
+              )}
+            </div>
+
+            <span
+              style={{
+                ...styles.badge,
+                ...(selectedStampOwned
+                  ? styles.ownedBadge
+                  : styles.unownedBadge),
+              }}
+            >
+              {selectedStampOwned ? "獲得済み" : "未獲得"}
+            </span>
+
+            <h2 id="stamp-detail-title" style={styles.detailTitle}>
+              {selectedStampOwned ? selectedStamp.name : "？？？"}
+            </h2>
+
+            <p style={styles.detailDescription}>
+              {selectedStampOwned
+                ? selectedStamp.description
+                : "このスタンプはまだ獲得していません。対応するマーカーをARカメラで読み取って、スタンプを集めましょう！"}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setSelectedStampId(null)}
+              style={styles.detailCloseButton}
+              area-label="スタンプの詳細を閉じる"
+            >
+              ×
+            </button>
+          </section>
+        </div>
+      )}
+
+      {/* リセット確認モーダル */}
       {showResetConfirm && (
-        <div style={styles.overlay}>
+        <div
+          style={styles.overlay}
+          onClick={() => setShowResetConfirm(false)}
+        >
           <section
             style={styles.dialog}
             role="dialog"
             aria-modal="true"
             aria-labelledby="reset-title"
+            onClick={(event) => event.stopPropagation()}
           >
             <h2 id="reset-title">スタンプをリセットしますか？</h2>
             <p>獲得したスタンプがすべて未獲得に戻ります。</p>
@@ -278,8 +384,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sectionTitle: {
     maxWidth: 720,
-    margin: "0 auto 16px",
+    margin: "0 auto 8px",
     fontSize: 21,
+  },
+  hint: {
+    maxWidth: 720,
+    margin: "0 auto 16px",
+    fontSize: 13,
+    color: "#68685e",
   },
   grid: {
     display: "grid",
@@ -289,12 +401,20 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "0 auto",
   },
   stampCard: {
+    boxSizing: "border-box",
+    width: "100%",
     padding: 14,
+    border: "1px solid transparent",
     borderRadius: 16,
     background: "#fff",
+    color: "#282820",
     textAlign: "center",
     boxShadow: "0 3px 12px rgba(0,0,0,0.04)",
     minWidth: 0,
+    cursor: "pointer",
+    fontFamily: "inherit",
+    appearance: "none",
+    WebkitAppearance: "none",
   },
   lockedCard: {
     background: "#edede7",
@@ -351,6 +471,12 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#e0e0d9",
     color: "#77776d",
   },
+  detailHint: {
+    display: "block",
+    marginTop: 10,
+    fontSize: 11,
+    color: "#77776d",
+  },
   footer: {
     display: "flex",
     flexDirection: "column",
@@ -358,18 +484,6 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: 720,
     margin: "32px auto 0",
     alignItems: "center",
-  },
-  mainButton: {
-    display: "block",
-    width: "100%",
-    boxSizing: "border-box",
-    padding: 16,
-    borderRadius: 14,
-    textAlign: "center",
-    background: "#526f49",
-    color: "#fff",
-    textDecoration: "none",
-    fontWeight: 700,
   },
   resetButton: {
     border: "none",
@@ -383,11 +497,107 @@ const styles: Record<string, React.CSSProperties> = {
     position: "fixed",
     inset: 0,
     zIndex: 1000,
-    background: "rgba(0,0,0,0.5)",
+    background: "rgba(0,0,0,0.58)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
+    overflowY: "auto",
+  },
+  detailDialog: {
+    position: "relative",
+    boxSizing: "border-box",
+    width: "100%",
+    maxWidth: 400,
+    maxHeight: "90vh",
+    overflowY: "auto",
+    background: "#fff",
+    borderRadius: 22,
+    padding: "28px 24px 24px",
+    textAlign: "center",
+    boxShadow: "0 12px 40px rgba(0,0,0,0.2)",
+  },
+  closeButton: {
+    position: "absolute",
+    top: 10,
+    right: 12,
+    width: 36,
+    height: 36,
+    border: "none",
+    borderRadius: "50%",
+    background: "#f0efe9",
+    color: "#444",
+    fontSize: 27,
+    lineHeight: 1,
+    cursor: "pointer",
+  },
+  bottomCloseButton: {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 48,
+  height: 48,
+  margin: "20px auto 0",
+  border: "none",
+  borderRadius: "50%",
+  background: "#526f49",
+  color: "#fff",
+  fontSize: 32,
+  lineHeight: 1,
+  cursor: "pointer",
+  boxShadow: "0 3px 8px rgba(0,0,0,0.15)",
+  },  
+  detailImageArea: {
+    width: "100%",
+    maxWidth: 240,
+    aspectRatio: "1 / 1",
+    margin: "8px auto 18px",
+    borderRadius: 16,
+    background: "#f4f2e9",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  detailImage: {
+    width: "100%",
+    height: "100%",
+    objectFit: "contain",
+  },
+  detailLockedImage: {
+    width: 100,
+    height: 100,
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#d9d9d0",
+    color: "#85857a",
+    fontSize: 60,
+    fontWeight: 700,
+  },
+  detailTitle: {
+    margin: "14px 0 10px",
+    fontSize: 24,
+  },
+  detailDescription: {
+    margin: "0 0 24px",
+    fontSize: 15,
+    lineHeight: 1.9,
+    color: "#55554d",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "anywhere",
+  },
+  detailCloseButton: {
+    width: "100%",
+    padding: 14,
+    border: "none",
+    borderRadius: 12,
+    background: "#526f49",
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   dialog: {
     width: "100%",
