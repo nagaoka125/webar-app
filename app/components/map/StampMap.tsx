@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { STAMPS } from "@/lib/stamps";
 import type { Stamp } from "@/lib/stamps";
 import { useCollectedStamps } from "@/hooks/useCollectedStamps";
@@ -31,19 +31,34 @@ export default function StampMap() {
       )
     : 0;
 
-  const getCurrentLocation = () => {
-    navigator.geolocation.getCurrentPosition(
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      console.error("位置情報に対応していません");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setPosition([
           pos.coords.latitude,
           pos.coords.longitude,
         ]);
       },
-      () => {
-        alert("現在地を取得できませんでした");
+      (error) => {
+        console.error("現在地の取得に失敗しました:", error);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 3000,
+        timeout: 15000,
       }
     );
-  };
+
+    // ページを離れると監視を停止
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
 
   const openRoute = (spot: Stamp) => {
     const origin = position
@@ -94,12 +109,9 @@ export default function StampMap() {
           onSelectSpot={setSelectedSpot}
         />
 
-        <button
-          className="current-location-button"
-          onClick={getCurrentLocation}
-        >
-          📍 現在地
-        </button>
+        <div className="current-location-button">
+          {position ? "📍 現在地を取得中" : "📍 現在地を確認中..."}
+        </div>
       </div>
 
       {/* スポット詳細 */}
