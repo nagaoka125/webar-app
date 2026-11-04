@@ -567,7 +567,7 @@ export default function WebARPage() {
         ? existing.filter(
             (value): value is string =>
               typeof value === "string" &&
-              STAMPS.some((stamp) => stamp.id === value)
+              STAMPS.some((stamp) => stamp.stampId === value)
           )
         : [];
 

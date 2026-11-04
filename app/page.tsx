@@ -9,6 +9,10 @@ export default function Home() {
       router.push("/stamp")
   };
 
+  const routeMap = () => {
+      router.push("/map")
+  }
+
   return (
     <main className="min-h-full flex flex-col items-center justify-start p-8">
       <h1 className="text-2xl font-bold mb-4">webARapp</h1>
@@ -19,6 +23,14 @@ export default function Home() {
           style={{ minHeight: 48, padding: "12px 16px", fontSize: 16 }}
         >
           スタンプ帳
+        </button>
+
+      <button
+          type="button"
+          onClick={routeMap}
+          style={{ minHeight: 48, padding: "12px 16px", fontSize: 16 }}
+        >
+          マップ
         </button>
     </main>
   )
