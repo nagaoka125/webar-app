@@ -86,6 +86,21 @@ export default function MapContent({
         selectedSpot={selectedSpot}
       />
 
+      {position && (
+        <CircleMarker
+          center={position}
+          radius={10}
+          pathOptions={{
+            color: "#ffffff",
+            weight: 3,
+            fillColor: "#2563eb",
+            fillOpacity: 1,
+          }}
+        >
+          <Popup>現在地</Popup>
+        </CircleMarker>
+      )}
+
       {/*
         STAMPSの全スポットを表示
       */}
