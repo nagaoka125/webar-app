@@ -33,8 +33,8 @@ export const STAMPS: Stamp[] = [
     label: "ターゲット 2",
     targetSrc: "/assets/targets/targets02.mind",
     modelSrc: "/assets/models/model02.glb",
-    latitude: 35.000000, 
-    longitude: 137.000000,
+    latitude: 35.001000, 
+    longitude: 137.001000,
   },
   {
     id: "stamp-03",
@@ -45,8 +45,8 @@ export const STAMPS: Stamp[] = [
     label: "ターゲット 3",
     targetSrc: "/assets/targets/targets03.mind",
     modelSrc: "/assets/models/model03.glb",
-    latitude: 35.000000, 
-    longitude: 136.000000,
+    latitude: 35.002000, 
+    longitude: 136.002000,
   },
 ];
 
