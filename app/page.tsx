@@ -1,25 +1,22 @@
-"use client"
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import CameraButton from "./components/CameraButton";
 
 const heroSlides = [
 	{
 		title: "大仙古墳",
-		image:
-			"https://images.unsplash.com/photo-1526481280695-3c4691d4be1b?auto=format&fit=crop&w=1200&q=80",
+		image: "/assets/sakai_image/daisen.jpg",
 	},
 	{
 		title: "さかい利晶の杜",
-		image:
-			"https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80",
+		image: "/assets/sakai_image/risho.jpeg",
 	},
 	{
 		title: "旧堺燈台",
-		image:
-			"https://images.unsplash.com/photo-1493246507139-91e8fad9978e?auto=format&fit=crop&w=1200&q=80",
+		image: "/assets/sakai_image/sakaitodai.jpg",
 	},
 ];
 
@@ -63,10 +60,19 @@ const contactCards = [
 export default function Home() {
 	const router = useRouter();
 	const [menuOpen, setMenuOpen] = useState(false);
+	const [currentSlide, setCurrentSlide] = useState(0);
 
 	const routeStamp = () => router.push("/stamp");
 	const routeMap = () => router.push("/map");
 	const closeMenu = () => setMenuOpen(false);
+
+	useEffect(() => {
+		const intervalId = window.setInterval(() => {
+			setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+		}, 3500);
+
+		return () => window.clearInterval(intervalId);
+	}, []);
 
 	const renderCards = (items: { title: string; date: string }[]) =>
 		items.map((item) => (
@@ -141,7 +147,7 @@ export default function Home() {
 					{heroSlides.map((slide, index) => (
 						<div
 							key={slide.title}
-							className={`slide-item ${index === 0 ? "active" : ""}`}
+							className={`slide-item ${index === currentSlide ? "active" : ""}`}
 							style={{ backgroundImage: `url(${slide.image})` }}
 						>
 							<div className="slide-title">{slide.title}</div>
@@ -149,14 +155,14 @@ export default function Home() {
 					))}
 				</div>
 
-				<div
-					className="slider-dots"
-					aria-label="スライド切替"
-				>
+				<div className="slider-dots" aria-label="スライド切替">
 					{heroSlides.map((slide, index) => (
-						<span
+						<button
+							type="button"
 							key={slide.title}
-							className={`dot ${index === 0 ? "active" : ""}`}
+							aria-label={`${slide.title}を表示`}
+							className={`dot ${index === currentSlide ? "active" : ""}`}
+							onClick={() => setCurrentSlide(index)}
 						/>
 					))}
 				</div>
@@ -164,10 +170,7 @@ export default function Home() {
 
 			<main className="main-content">
 				<section className="content-section">
-					<Link
-						href="/stamp"
-						className="section-badge-link"
-					>
+					<Link href="/stamp" className="section-badge-link">
 						<div className="section-badge">
 							<span className="badge-ja">お知らせ</span>
 							<span className="badge-en">Announcements</span>
@@ -175,10 +178,7 @@ export default function Home() {
 					</Link>
 					<div className="horizontal-scroll-container">
 						{renderCards(announcementCards)}
-						<Link
-							href="/stamp"
-							className="content-card more-card"
-						>
+						<Link href="/stamp" className="content-card more-card">
 							<div className="more-card-inner">
 								<span>もっと見る</span>
 								<span className="more-arrow">→</span>
@@ -188,10 +188,7 @@ export default function Home() {
 				</section>
 
 				<section className="content-section">
-					<Link
-						href="/map"
-						className="section-badge-link"
-					>
+					<Link href="/map" className="section-badge-link">
 						<div className="section-badge">
 							<span className="badge-ja">ニュース</span>
 							<span className="badge-en">News</span>
@@ -199,10 +196,7 @@ export default function Home() {
 					</Link>
 					<div className="horizontal-scroll-container">
 						{renderCards(newsCards)}
-						<Link
-							href="/map"
-							className="content-card more-card"
-						>
+						<Link href="/map" className="content-card more-card">
 							<div className="more-card-inner">
 								<span>もっと見る</span>
 								<span className="more-arrow">→</span>
@@ -212,10 +206,7 @@ export default function Home() {
 				</section>
 
 				<section className="content-section">
-					<Link
-						href="/webar?autostart=1"
-						className="section-badge-link"
-					>
+					<Link href="/webar?autostart=1" className="section-badge-link">
 						<div className="section-badge">
 							<span className="badge-ja">お問い合わせ</span>
 							<span className="badge-en">Contact Us</span>
@@ -223,10 +214,7 @@ export default function Home() {
 					</Link>
 					<div className="horizontal-scroll-container">
 						{renderCards(contactCards)}
-						<Link
-							href="/webar?autostart=1"
-							className="content-card more-card"
-						>
+						<Link href="/webar?autostart=1" className="content-card more-card">
 							<div className="more-card-inner">
 								<span>もっと見る</span>
 								<span className="more-arrow">→</span>
@@ -236,10 +224,7 @@ export default function Home() {
 				</section>
 			</main>
 
-			<nav
-				className="bottom-nav"
-				aria-label="下部ナビゲーション"
-			>
+			<nav className="bottom-nav" aria-label="下部ナビゲーション">
 				<button
 					type="button"
 					className="bottom-nav-btn nav-left"
