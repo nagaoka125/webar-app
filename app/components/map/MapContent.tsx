@@ -36,6 +36,7 @@ type Props = {
   position: [number, number] | null;
   selectedSpot: Stamp | null;
   showRoute: boolean;
+  routeCoordinates: [number, number][] | null;
   onSelectSpot: (spot: Stamp) => void;
 };
 
@@ -43,19 +44,18 @@ function MapController({
   position,
   selectedSpot,
   showRoute,
+  routeCoordinates,
 }: {
   position: [number, number] | null;
   selectedSpot: Stamp | null;
   showRoute: boolean;
+  routeCoordinates: [number, number][] | null;
 }) {
   const map = useMap();
 
   useEffect(() => {
-    if (selectedSpot && position && showRoute) {
-      const bounds = L.latLngBounds([
-        position,
-        [selectedSpot.latitude, selectedSpot.longitude],
-      ]);
+    if (selectedSpot && position && showRoute && routeCoordinates?.length) {
+      const bounds = L.latLngBounds(routeCoordinates);
       map.fitBounds(bounds, { padding: [50, 50] });
       return;
     }
@@ -71,7 +71,7 @@ function MapController({
     if (position) {
       map.flyTo(position, 16);
     }
-  }, [position, selectedSpot, showRoute, map]);
+  }, [position, selectedSpot, showRoute, routeCoordinates, map]);
 
   return null;
 }
@@ -81,6 +81,7 @@ export default function MapContent({
   position,
   selectedSpot,
   showRoute,
+  routeCoordinates,
   onSelectSpot,
 }: Props) {
   return (
@@ -102,6 +103,7 @@ export default function MapContent({
         position={position}
         selectedSpot={selectedSpot}
         showRoute={showRoute}
+        routeCoordinates={routeCoordinates}
       />
 
       {position && (
@@ -119,12 +121,9 @@ export default function MapContent({
         </CircleMarker>
       )}
 
-      {selectedSpot && position && showRoute && (
+      {selectedSpot && position && showRoute && routeCoordinates?.length && (
         <Polyline
-          positions={[
-            position,
-            [selectedSpot.latitude, selectedSpot.longitude],
-          ]}
+          positions={routeCoordinates}
           pathOptions={{
             color: "#2563eb",
             weight: 5,

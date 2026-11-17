@@ -18,6 +18,13 @@ type RoutePreview = {
   spot: Stamp;
   distanceMeters: number;
   durationMinutes: number;
+  isLoading?: boolean;
+};
+
+type RouteResult = {
+  coordinates: [number, number][];
+  distanceMeters: number;
+  durationSeconds: number;
 };
 
 const getDistanceMeters = (
@@ -52,6 +59,44 @@ const formatDistance = (meters: number) => {
 
 const formatDuration = (minutes: number) => `${minutes} 分`;
 
+const fetchWalkingRoute = async (
+  from: [number, number],
+  to: [number, number]
+): Promise<RouteResult> => {
+  const [fromLat, fromLon] = from;
+  const [toLat, toLon] = to;
+
+  const url = `https://router.project-osrm.org/route/v1/foot/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=false`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("経路の取得に失敗しました");
+  }
+
+  const data = await response.json();
+  const route = data.routes?.[0];
+
+  if (!route || !route.geometry?.coordinates) {
+    throw new Error("経路データが見つかりませんでした");
+  }
+
+  const coordinates = route.geometry.coordinates.map(
+    ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
+  );
+
+  return {
+    coordinates,
+    distanceMeters: route.distance,
+    durationSeconds: route.duration,
+  };
+};
+
 export default function StampMap() {
   const { collectedIds, ready } = useCollectedStamps();
 
@@ -65,6 +110,8 @@ export default function StampMap() {
     useState<RoutePreview | null>(null);
 
   const [showRoute, setShowRoute] = useState(false);
+  const [routeCoordinates, setRouteCoordinates] =
+    useState<[number, number][] | null>(null);
 
   const collectedCount = collectedIds.length;
 
@@ -115,29 +162,56 @@ export default function StampMap() {
     );
   };
 
-  const prepareRoutePreview = (spot: Stamp) => {
+  const prepareRoutePreview = async (spot: Stamp) => {
     if (!position) {
       alert("現在地が取得できていないため、経路を表示できません。");
       return;
     }
 
-    const distanceMeters = getDistanceMeters(
-      position,
-      [spot.latitude, spot.longitude]
-    );
-
-    const durationMinutes = Math.max(
-      1,
-      Math.round(distanceMeters / 80)
-    );
-
     setSelectedSpot(spot);
     setRoutePreview({
       spot,
-      distanceMeters,
-      durationMinutes,
+      distanceMeters: 0,
+      durationMinutes: 0,
+      isLoading: true,
     });
     setShowRoute(false);
+
+    try {
+      const result = await fetchWalkingRoute(
+        position,
+        [spot.latitude, spot.longitude]
+      );
+
+      setRoutePreview({
+        spot,
+        distanceMeters: result.distanceMeters,
+        durationMinutes: Math.max(
+          1,
+          Math.round(result.durationSeconds / 60)
+        ),
+      });
+      setRouteCoordinates(result.coordinates);
+    } catch (error) {
+      console.error(error);
+      const fallbackDistance = getDistanceMeters(
+        position,
+        [spot.latitude, spot.longitude]
+      );
+
+      setRoutePreview({
+        spot,
+        distanceMeters: fallbackDistance,
+        durationMinutes: Math.max(
+          1,
+          Math.round(fallbackDistance / 80)
+        ),
+      });
+      setRouteCoordinates([
+        position,
+        [spot.latitude, spot.longitude],
+      ]);
+    }
   };
 
   const confirmRouteDisplay = () => {
@@ -151,6 +225,7 @@ export default function StampMap() {
     setRoutePreview(null);
     setShowRoute(false);
     setSelectedSpot(null);
+    setRouteCoordinates(null);
   };
 
   const openGoogleMapsRoute = (spot: Stamp) => {
@@ -197,6 +272,7 @@ export default function StampMap() {
           position={position}
           selectedSpot={selectedSpot}
           showRoute={showRoute}
+          routeCoordinates={routeCoordinates}
           onSelectSpot={prepareRoutePreview}
         />
 
@@ -221,14 +297,18 @@ export default function StampMap() {
               <div className="route-stat-row">
                 <span>距離</span>
                 <strong>
-                  {formatDistance(routePreview.distanceMeters)}
+                  {routePreview.isLoading
+                    ? "計算中..."
+                    : formatDistance(routePreview.distanceMeters)}
                 </strong>
               </div>
 
               <div className="route-stat-row">
                 <span>徒歩時間</span>
                 <strong>
-                  {formatDuration(routePreview.durationMinutes)}
+                  {routePreview.isLoading
+                    ? "計算中..."
+                    : formatDuration(routePreview.durationMinutes)}
                 </strong>
               </div>
             </div>
@@ -244,8 +324,9 @@ export default function StampMap() {
               <button
                 className="route-accept-button"
                 onClick={confirmRouteDisplay}
+                disabled={routePreview.isLoading}
               >
-                経路を表示
+                {routePreview.isLoading ? "計算中..." : "経路を表示"}
               </button>
             </div>
           </div>
