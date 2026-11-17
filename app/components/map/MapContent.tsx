@@ -6,6 +6,7 @@ import {
   Marker,
   Popup,
   CircleMarker,
+  Polyline,
   useMap,
 } from "react-leaflet";
 
@@ -34,28 +35,43 @@ type Props = {
   collectedIds: string[];
   position: [number, number] | null;
   selectedSpot: Stamp | null;
+  showRoute: boolean;
   onSelectSpot: (spot: Stamp) => void;
 };
 
 function MapController({
   position,
   selectedSpot,
+  showRoute,
 }: {
   position: [number, number] | null;
   selectedSpot: Stamp | null;
+  showRoute: boolean;
 }) {
   const map = useMap();
 
   useEffect(() => {
+    if (selectedSpot && position && showRoute) {
+      const bounds = L.latLngBounds([
+        position,
+        [selectedSpot.latitude, selectedSpot.longitude],
+      ]);
+      map.fitBounds(bounds, { padding: [50, 50] });
+      return;
+    }
+
     if (selectedSpot) {
       map.flyTo(
         [selectedSpot.latitude, selectedSpot.longitude],
         17
       );
-    } else if (position) {
+      return;
+    }
+
+    if (position) {
       map.flyTo(position, 16);
     }
-  }, [position, selectedSpot, map]);
+  }, [position, selectedSpot, showRoute, map]);
 
   return null;
 }
@@ -64,6 +80,7 @@ export default function MapContent({
   collectedIds,
   position,
   selectedSpot,
+  showRoute,
   onSelectSpot,
 }: Props) {
   return (
@@ -84,6 +101,7 @@ export default function MapContent({
       <MapController
         position={position}
         selectedSpot={selectedSpot}
+        showRoute={showRoute}
       />
 
       {position && (
@@ -101,6 +119,21 @@ export default function MapContent({
         </CircleMarker>
       )}
 
+      {selectedSpot && position && showRoute && (
+        <Polyline
+          positions={[
+            position,
+            [selectedSpot.latitude, selectedSpot.longitude],
+          ]}
+          pathOptions={{
+            color: "#2563eb",
+            weight: 5,
+            opacity: 0.8,
+            dashArray: "12 12",
+          }}
+        />
+      )}
+
       {/*
         STAMPSの全スポットを表示
       */}
@@ -115,7 +148,7 @@ export default function MapContent({
             eventHandlers={{
               click: () => onSelectSpot(stamp),
             }}
-    >
+          >
             <Popup>
               <strong>{stamp.label}</strong>
               <p>{collected ? "✓ 獲得済み" : "★ 未獲得"}</p>

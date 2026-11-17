@@ -482,4 +482,169 @@ a-scene canvas {
   right: 12px;
   top: 12px;
   z-index: 1000;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.map-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.progress-bar {
+  width: 120px;
+  height: 12px;
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #16a34a);
+  border-radius: 999px;
+}
+
+.route-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 2000;
+  padding: 16px;
+}
+
+.route-confirm-modal {
+  width: min(420px, 100%);
+  background: white;
+  border-radius: 18px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
+  padding: 20px 18px 16px;
+  color: #0f172a;
+}
+
+.route-confirm-modal h3 {
+  margin: 0 0 16px;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.route-confirm-content {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.route-confirm-label {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #111827;
+}
+
+.route-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.route-stat-row span {
+  color: #475569;
+}
+
+.route-stat-row strong {
+  color: #0f172a;
+}
+
+.route-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.route-cancel-button,
+.route-accept-button,
+.route-button,
+.current-location-button,
+.close-button {
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.route-cancel-button:hover,
+.route-accept-button:hover,
+.route-button:hover,
+.current-location-button:hover,
+.close-button:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+.route-cancel-button {
+  background: #e2e8f0;
+  color: #0f172a;
+  padding: 10px 14px;
+}
+
+.route-accept-button {
+  background: #2563eb;
+  color: white;
+  padding: 10px 16px;
+}
+
+.route-button {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  background: #2563eb;
+  color: white;
+  padding: 11px 14px;
+}
+
+.route-button.alt {
+  background: #0f766e;
+}
+
+.close-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  font-size: 1.2rem;
+}
+
+.spot-detail {
+  position: relative;
+  margin-top: 16px;
+  padding: 18px 16px 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 16px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
+.spot-detail h3 {
+  margin: 0 0 8px;
+  padding-right: 34px;
+}
+
+.spot-detail p {
+  margin: 6px 0;
 }
