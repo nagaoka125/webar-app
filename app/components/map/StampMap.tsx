@@ -53,12 +53,25 @@ export default function StampMap() {
         timeout: 15000,
       }
     );
-
     // ページを離れると監視を停止
     return () => {
       navigator.geolocation.clearWatch(watchId);
     };
   }, []);
+
+  const getCurrentLocation = () => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setPosition([
+          pos.coords.latitude,
+          pos.coords.longitude,
+        ]);
+      },
+      () => {
+        alert("現在地を取得できませんでした");
+      }
+    );
+  };
 
   const openRoute = (spot: Stamp) => {
     const origin = position
@@ -109,9 +122,12 @@ export default function StampMap() {
           onSelectSpot={setSelectedSpot}
         />
 
-        <div className="current-location-button">
-          {position ? "📍 現在地を取得中" : "📍 現在地を確認中..."}
-        </div>
+        <button
+          className="current-location-button"
+          onClick={getCurrentLocation}
+        >
+          📍 現在地
+        </button>
       </div>
 
       {/* スポット詳細 */}
