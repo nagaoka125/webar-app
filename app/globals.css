@@ -424,6 +424,34 @@ a {
   line-height: 1;
 }
 
+.route-mode-select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.route-mode-select-wrap label {
+  font-size: 0.9rem;
+  color: #334155;
+  font-weight: 600;
+}
+
+.route-mode-select-wrap select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: white;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.route-accept-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;

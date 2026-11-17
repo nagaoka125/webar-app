@@ -127,8 +127,8 @@ export default function MapContent({
           pathOptions={{
             color: "#2563eb",
             weight: 5,
-            opacity: 0.8,
-            dashArray: "12 12",
+            opacity: 1,
+            dashArray: "",
           }}
         />
       )}

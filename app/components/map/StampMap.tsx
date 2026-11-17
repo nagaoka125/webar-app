@@ -14,6 +14,8 @@ const MapContent = dynamic(
   }
 );
 
+type TravelMode = "walk" | "bike";
+
 type RoutePreview = {
   spot: Stamp;
   distanceMeters: number;
@@ -59,14 +61,21 @@ const formatDistance = (meters: number) => {
 
 const formatDuration = (minutes: number) => `${minutes} 分`;
 
-const fetchWalkingRoute = async (
+const getModeLabel = (mode: TravelMode) => {
+  if (mode === "bike") return "自転車";
+  return "徒歩";
+};
+
+const fetchRoute = async (
+  mode: TravelMode,
   from: [number, number],
   to: [number, number]
 ): Promise<RouteResult> => {
   const [fromLat, fromLon] = from;
   const [toLat, toLon] = to;
+  const profile = mode === "bike" ? "bike" : "foot";
 
-  const url = `https://router.project-osrm.org/route/v1/foot/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=false`;
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=false`;
 
   const response = await fetch(url, {
     method: "GET",
@@ -112,6 +121,8 @@ export default function StampMap() {
   const [showRoute, setShowRoute] = useState(false);
   const [routeCoordinates, setRouteCoordinates] =
     useState<[number, number][] | null>(null);
+  const [travelMode, setTravelMode] =
+    useState<TravelMode>("bike");
 
   const collectedCount = collectedIds.length;
 
@@ -178,7 +189,8 @@ export default function StampMap() {
     setShowRoute(false);
 
     try {
-      const result = await fetchWalkingRoute(
+      const result = await fetchRoute(
+        travelMode,
         position,
         [spot.latitude, spot.longitude]
       );
@@ -204,7 +216,7 @@ export default function StampMap() {
         distanceMeters: fallbackDistance,
         durationMinutes: Math.max(
           1,
-          Math.round(fallbackDistance / 80)
+          Math.round(fallbackDistance / (travelMode === "bike" ? 180 : 80))
         ),
       });
       setRouteCoordinates([
@@ -233,10 +245,11 @@ export default function StampMap() {
       ? `&origin=${position[0]},${position[1]}`
       : "";
 
+    const mode = travelMode === "bike" ? "bicycling" : "walking";
     const url =
       `https://www.google.com/maps/dir/?api=1` +
       `&destination=${spot.latitude},${spot.longitude}` +
-      `${origin}&travelmode=walking`;
+      `${origin}&travelmode=${mode}`;
 
     window.open(url, "_blank", "noopener,noreferrer");
   };
@@ -294,6 +307,20 @@ export default function StampMap() {
                 {routePreview.spot.label}
               </p>
 
+              <div className="route-mode-select-wrap">
+                <label htmlFor="travel-mode">移動手段</label>
+                <select
+                  id="travel-mode"
+                  value={travelMode}
+                  onChange={(e) =>
+                    setTravelMode(e.target.value as TravelMode)
+                  }
+                >
+                  <option value="bike">自転車</option>
+                  <option value="walk">徒歩</option>
+                </select>
+              </div>
+
               <div className="route-stat-row">
                 <span>距離</span>
                 <strong>
@@ -304,7 +331,7 @@ export default function StampMap() {
               </div>
 
               <div className="route-stat-row">
-                <span>徒歩時間</span>
+                <span>{getModeLabel(travelMode)}時間</span>
                 <strong>
                   {routePreview.isLoading
                     ? "計算中..."
@@ -356,7 +383,7 @@ export default function StampMap() {
             className="route-button"
             onClick={() => prepareRoutePreview(selectedSpot)}
           >
-            🗺 経路を表示
+            🗺 {getModeLabel(travelMode)}で経路を表示
           </button>
 
           <button
