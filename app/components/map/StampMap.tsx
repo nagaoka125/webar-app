@@ -29,17 +29,36 @@ type RouteResult = {
   durationSeconds: number;
 };
 
+type RouteCandidate = {
+  geometry?: {
+    coordinates: [number, number][];
+  };
+  distance?: number;
+  duration?: number;
+  legs?: Array<{
+    steps?: Array<{
+      name?: string;
+      ref?: string;
+      speed?: number;
+      distance?: number;
+      maneuver?: {
+        type?: string;
+        modifier?: string;
+      };
+    }>;
+  }>;
+};
+
 const FORBIDDEN_ROAD_CLASSES = [
   "motorway",
   "motorway_link",
   "trunk",
   "trunk_link",
+  "autobahn",
+  "interstate",
   "primary",
-  "primary_link",
   "secondary",
-  "secondary_link",
   "tertiary",
-  "tertiary_link",
   "service",
   "ferry",
   "steps",
@@ -59,12 +78,11 @@ const ROAD_CLASS_TO_EXCLUDE: Record<TravelMode, string[]> = {
     "motorway_link",
     "trunk",
     "trunk_link",
+    "autobahn",
+    "interstate",
     "primary",
-    "primary_link",
     "secondary",
-    "secondary_link",
     "tertiary",
-    "tertiary_link",
     "service",
     "ferry",
     "steps",
@@ -79,6 +97,8 @@ const ROAD_CLASS_TO_EXCLUDE: Record<TravelMode, string[]> = {
     "motorway_link",
     "trunk",
     "trunk_link",
+    "autobahn",
+    "interstate",
     "ferry",
     "steps",
     "path",
@@ -98,6 +118,143 @@ const isRoadClassForbidden = (
 
   const excluded = ROAD_CLASS_TO_EXCLUDE[mode];
   return excluded.includes(roadClass.toLowerCase());
+};
+
+const stepContainsForbiddenRoad = (
+  step: {
+    name?: string;
+    ref?: string;
+    speed?: number;
+    distance?: number;
+    maneuver?: { type?: string; modifier?: string };
+  },
+  mode: TravelMode
+) => {
+  const combined = [
+    step.name ?? "",
+    step.ref ?? "",
+    step.maneuver?.type ?? "",
+    step.maneuver?.modifier ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const forbiddenPatterns = FORBIDDEN_ROAD_CLASSES.map((value) => value.toLowerCase());
+  const excluded = ROAD_CLASS_TO_EXCLUDE[mode];
+  const patterns = [...new Set([...forbiddenPatterns, ...excluded])];
+
+  const hasForbiddenPattern = patterns.some((pattern) => combined.includes(pattern));
+  const hasHighSpeedSegment =
+    (mode === "walk" && (step.speed ?? 0) > 25) ||
+    (mode === "bike" && (step.speed ?? 0) > 40);
+
+  return hasForbiddenPattern || hasHighSpeedSegment;
+};
+
+const routeContainsForbiddenRoad = (
+  route: RouteCandidate,
+  mode: TravelMode
+) => {
+  const steps = route.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
+
+  return steps.some((step) => {
+    const containsForbiddenText = stepContainsForbiddenRoad(step, mode);
+    const isMotorwayManeuver =
+      step.maneuver?.type === "motorway" ||
+      step.maneuver?.modifier === "motorway";
+
+    return containsForbiddenText || isMotorwayManeuver;
+  });
+};
+
+const buildRouteResult = (route: RouteCandidate): RouteResult => {
+  const coordinates = route.geometry?.coordinates.map(
+    ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
+  ) ?? [];
+
+  return {
+    coordinates,
+    distanceMeters: route.distance ?? 0,
+    durationSeconds: route.duration ?? 0,
+  };
+};
+
+const findBestRoute = async (
+  mode: TravelMode,
+  from: [number, number],
+  to: [number, number]
+): Promise<RouteResult> => {
+  const [fromLat, fromLon] = from;
+  const [toLat, toLon] = to;
+  const profile = mode === "bike" ? "bike" : "foot";
+
+  const buildUrl = (exclude?: string) => {
+    const query = exclude ? `&exclude=${exclude}` : "";
+    return `https://router.project-osrm.org/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=true&alternatives=true&annotations=duration,distance,speed${query}`;
+  };
+
+  const primaryResponse = await fetch(buildUrl(), {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!primaryResponse.ok) {
+    throw new Error("経路の取得に失敗しました");
+  }
+
+  const primaryData = await primaryResponse.json();
+  const primaryRoutes = Array.isArray(primaryData.routes)
+    ? primaryData.routes as RouteCandidate[]
+    : [];
+
+  const safePrimaryRoute = primaryRoutes.find(
+    (route) => !routeContainsForbiddenRoad(route, mode)
+  );
+
+  if (safePrimaryRoute) {
+    return buildRouteResult(safePrimaryRoute);
+  }
+
+  const fallbackUrl = buildUrl(
+    "motorway,motorway_link,trunk,trunk_link,ferry,steps,track,bridleway,pedestrian,path"
+  );
+
+  const fallbackResponse = await fetch(fallbackUrl, {
+    method: "GET",
+    headers: { Accept: "application/json" },
+  });
+
+  if (!fallbackResponse.ok) {
+    throw new Error("代替経路の取得に失敗しました");
+  }
+
+  const fallbackData = await fallbackResponse.json();
+  const fallbackRoutes = Array.isArray(fallbackData.routes)
+    ? fallbackData.routes as RouteCandidate[]
+    : [];
+
+  const safeFallbackRoute = fallbackRoutes.find(
+    (route) => !routeContainsForbiddenRoad(route, mode)
+  );
+
+  if (safeFallbackRoute) {
+    return buildRouteResult(safeFallbackRoute);
+  }
+
+  const firstRoute = fallbackRoutes[0] ?? primaryRoutes[0];
+  if (!firstRoute || !firstRoute.geometry?.coordinates) {
+    throw new Error("代替経路データが見つかりませんでした");
+  }
+
+  return buildRouteResult(firstRoute);
+};
+
+const fetchRoute = async (
+  mode: TravelMode,
+  from: [number, number],
+  to: [number, number]
+): Promise<RouteResult> => {
+  return await findBestRoute(mode, from, to);
 };
 
 const getDistanceMeters = (
@@ -135,102 +292,6 @@ const formatDuration = (minutes: number) => `${minutes} 分`;
 const getModeLabel = (mode: TravelMode) => {
   if (mode === "bike") return "自転車";
   return "徒歩";
-};
-
-const findBestRoute = async (
-  mode: TravelMode,
-  from: [number, number],
-  to: [number, number]
-): Promise<RouteResult> => {
-  const [fromLat, fromLon] = from;
-  const [toLat, toLon] = to;
-  const profile = mode === "bike" ? "bike" : "foot";
-
-  const primaryUrl = `https://router.project-osrm.org/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=true&annotations=duration,distance,speed`;
-
-  const primaryResponse = await fetch(primaryUrl, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (!primaryResponse.ok) {
-    throw new Error("経路の取得に失敗しました");
-  }
-
-  const primaryData = await primaryResponse.json();
-  const route = primaryData.routes?.[0];
-
-  if (!route || !route.geometry?.coordinates) {
-    throw new Error("経路データが見つかりませんでした");
-  }
-
-  const routeSteps = Array.isArray(route.legs?.[0]?.steps)
-    ? route.legs[0].steps
-    : [];
-
-  const hasForbiddenRoad = routeSteps.some(
-    (step: { name?: string; maneuver?: { type?: string; modifier?: string } }) => {
-      const roadName = step.name?.toLowerCase() ?? "";
-      const matchesForbiddenClass = FORBIDDEN_ROAD_CLASSES.some((className) =>
-        roadName.includes(className)
-      );
-
-      return (
-        matchesForbiddenClass ||
-        isRoadClassForbidden(roadName, mode) ||
-        step.maneuver?.type === "motorway" ||
-        step.maneuver?.modifier === "motorway"
-      );
-    }
-  );
-
-  if (!hasForbiddenRoad) {
-    const coordinates = route.geometry.coordinates.map(
-      ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
-    );
-
-    return {
-      coordinates,
-      distanceMeters: route.distance,
-      durationSeconds: route.duration,
-    };
-  }
-
-  const fallbackUrl = `https://router.project-osrm.org/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=true&annotations=duration,distance,speed&exclude=motorway,motorway_link,trunk,trunk_link,ferry`;
-
-  const fallbackResponse = await fetch(fallbackUrl, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (!fallbackResponse.ok) {
-    throw new Error("代替経路の取得に失敗しました");
-  }
-
-  const fallbackData = await fallbackResponse.json();
-  const fallbackRoute = fallbackData.routes?.[0];
-
-  if (!fallbackRoute || !fallbackRoute.geometry?.coordinates) {
-    throw new Error("代替経路データが見つかりませんでした");
-  }
-
-  const coordinates = fallbackRoute.geometry.coordinates.map(
-    ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
-  );
-
-  return {
-    coordinates,
-    distanceMeters: fallbackRoute.distance,
-    durationSeconds: fallbackRoute.duration,
-  };
-};
-
-const fetchRoute = async (
-  mode: TravelMode,
-  from: [number, number],
-  to: [number, number]
-): Promise<RouteResult> => {
-  return await findBestRoute(mode, from, to);
 };
 
 export default function StampMap() {
