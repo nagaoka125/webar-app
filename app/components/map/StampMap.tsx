@@ -49,124 +49,6 @@ type RouteCandidate = {
   }>;
 };
 
-const FORBIDDEN_ROAD_CLASSES = [
-  "motorway",
-  "motorway_link",
-  "trunk",
-  "trunk_link",
-  "autobahn",
-  "interstate",
-  "primary",
-  "secondary",
-  "tertiary",
-  "service",
-  "ferry",
-  "steps",
-  "path",
-  "track",
-  "bridleway",
-  "cycleway",
-  "footway",
-  "pedestrian",
-  "construction",
-  "unknown",
-] as const;
-
-const ROAD_CLASS_TO_EXCLUDE: Record<TravelMode, string[]> = {
-  walk: [
-    "motorway",
-    "motorway_link",
-    "trunk",
-    "trunk_link",
-    "autobahn",
-    "interstate",
-    "primary",
-    "secondary",
-    "tertiary",
-    "service",
-    "ferry",
-    "steps",
-    "track",
-    "bridleway",
-    "cycleway",
-    "construction",
-    "unknown",
-  ],
-  bike: [
-    "motorway",
-    "motorway_link",
-    "trunk",
-    "trunk_link",
-    "autobahn",
-    "interstate",
-    "ferry",
-    "steps",
-    "path",
-    "track",
-    "bridleway",
-    "pedestrian",
-    "construction",
-    "unknown",
-  ],
-};
-
-const isRoadClassForbidden = (
-  roadClass: string | undefined,
-  mode: TravelMode
-) => {
-  if (!roadClass) return false;
-
-  const excluded = ROAD_CLASS_TO_EXCLUDE[mode];
-  return excluded.includes(roadClass.toLowerCase());
-};
-
-const stepContainsForbiddenRoad = (
-  step: {
-    name?: string;
-    ref?: string;
-    speed?: number;
-    distance?: number;
-    maneuver?: { type?: string; modifier?: string };
-  },
-  mode: TravelMode
-) => {
-  const combined = [
-    step.name ?? "",
-    step.ref ?? "",
-    step.maneuver?.type ?? "",
-    step.maneuver?.modifier ?? "",
-  ]
-    .join(" ")
-    .toLowerCase();
-
-  const forbiddenPatterns = FORBIDDEN_ROAD_CLASSES.map((value) => value.toLowerCase());
-  const excluded = ROAD_CLASS_TO_EXCLUDE[mode];
-  const patterns = [...new Set([...forbiddenPatterns, ...excluded])];
-
-  const hasForbiddenPattern = patterns.some((pattern) => combined.includes(pattern));
-  const hasHighSpeedSegment =
-    (mode === "walk" && (step.speed ?? 0) > 25) ||
-    (mode === "bike" && (step.speed ?? 0) > 40);
-
-  return hasForbiddenPattern || hasHighSpeedSegment;
-};
-
-const routeContainsForbiddenRoad = (
-  route: RouteCandidate,
-  mode: TravelMode
-) => {
-  const steps = route.legs?.flatMap((leg) => leg.steps ?? []) ?? [];
-
-  return steps.some((step) => {
-    const containsForbiddenText = stepContainsForbiddenRoad(step, mode);
-    const isMotorwayManeuver =
-      step.maneuver?.type === "motorway" ||
-      step.maneuver?.modifier === "motorway";
-
-    return containsForbiddenText || isMotorwayManeuver;
-  });
-};
-
 const buildRouteResult = (route: RouteCandidate): RouteResult => {
   const coordinates = route.geometry?.coordinates.map(
     ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
@@ -186,67 +68,45 @@ const findBestRoute = async (
 ): Promise<RouteResult> => {
   const [fromLat, fromLon] = from;
   const [toLat, toLon] = to;
-  const profile = mode === "bike" ? "bike" : "foot";
 
-  const buildUrl = (exclude?: string) => {
-    const query = exclude ? `&exclude=${exclude}` : "";
-    return `https://router.project-osrm.org/route/v1/${profile}/${fromLon},${fromLat};${toLon},${toLat}?geometries=geojson&overview=full&steps=true&alternatives=true&annotations=duration,distance,speed${query}`;
-  };
+  // 移動手段に応じて接続先を切り替える
+  const server =
+    mode === "bike"
+      ? "routed-bike"
+      : "routed-foot";
 
-  const primaryResponse = await fetch(buildUrl(), {
+  const url =
+    `https://routing.openstreetmap.de/${server}` +
+    `/route/v1/driving/` +
+    `${fromLon},${fromLat};${toLon},${toLat}` +
+    `?geometries=geojson` +
+    `&overview=full` +
+    `&steps=true` +
+    `&alternatives=true`;
+
+  const response = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+    },
   });
 
-  if (!primaryResponse.ok) {
+  if (!response.ok) {
     throw new Error("経路の取得に失敗しました");
   }
 
-  const primaryData = await primaryResponse.json();
-  const primaryRoutes = Array.isArray(primaryData.routes)
-    ? primaryData.routes as RouteCandidate[]
-    : [];
+  const data = await response.json();
 
-  const safePrimaryRoute = primaryRoutes.find(
-    (route) => !routeContainsForbiddenRoad(route, mode)
-  );
-
-  if (safePrimaryRoute) {
-    return buildRouteResult(safePrimaryRoute);
+  if (data.code !== "Ok" || !data.routes?.length) {
+    throw new Error(
+      data.message ?? "経路が見つかりませんでした"
+    );
   }
 
-  const fallbackUrl = buildUrl(
-    "motorway,motorway_link,trunk,trunk_link,ferry,steps,track,bridleway,pedestrian,path"
-  );
+  // OSRMが返す推奨ルートを使用
+  const route = data.routes[0];
 
-  const fallbackResponse = await fetch(fallbackUrl, {
-    method: "GET",
-    headers: { Accept: "application/json" },
-  });
-
-  if (!fallbackResponse.ok) {
-    throw new Error("代替経路の取得に失敗しました");
-  }
-
-  const fallbackData = await fallbackResponse.json();
-  const fallbackRoutes = Array.isArray(fallbackData.routes)
-    ? fallbackData.routes as RouteCandidate[]
-    : [];
-
-  const safeFallbackRoute = fallbackRoutes.find(
-    (route) => !routeContainsForbiddenRoad(route, mode)
-  );
-
-  if (safeFallbackRoute) {
-    return buildRouteResult(safeFallbackRoute);
-  }
-
-  const firstRoute = fallbackRoutes[0] ?? primaryRoutes[0];
-  if (!firstRoute || !firstRoute.geometry?.coordinates) {
-    throw new Error("代替経路データが見つかりませんでした");
-  }
-
-  return buildRouteResult(firstRoute);
+  return buildRouteResult(route);
 };
 
 const fetchRoute = async (
@@ -254,7 +114,7 @@ const fetchRoute = async (
   from: [number, number],
   to: [number, number]
 ): Promise<RouteResult> => {
-  return await findBestRoute(mode, from, to);
+  return findBestRoute(mode, from, to);
 };
 
 const getDistanceMeters = (
@@ -361,7 +221,7 @@ export default function StampMap() {
     );
   };
 
-  const prepareRoutePreview = async (spot: Stamp) => {
+  const prepareRoutePreview = async (spot: Stamp, mode: TravelMode=travelMode) => {
     if (!position) {
       alert("現在地が取得できていないため、経路を表示できません。");
       return;
@@ -378,7 +238,7 @@ export default function StampMap() {
 
     try {
       const result = await fetchRoute(
-        travelMode,
+        mode,
         position,
         [spot.latitude, spot.longitude]
       );
@@ -500,9 +360,11 @@ export default function StampMap() {
                 <select
                   id="travel-mode"
                   value={travelMode}
-                  onChange={(e) =>
-                    setTravelMode(e.target.value as TravelMode)
-                  }
+                  onChange={(e) => {
+                    const nextMode = e.target.value as TravelMode;
+                    setTravelMode(nextMode);
+                    prepareRoutePreview(routePreview.spot, nextMode);
+                  }}
                 >
                   <option value="bike">自転車</option>
                   <option value="walk">徒歩</option>
